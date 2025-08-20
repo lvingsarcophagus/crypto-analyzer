@@ -33,7 +33,8 @@ export async function POST(request: Request) {
     if (!tokenId) return NextResponse.json({ error: "tokenId is required" }, { status: 400 })
 
     const id = await resolveId(tokenId)
-    const url = `${API_CONFIG.COINGECKO.BASE_URL}/coins/${id}/market_chart?vs_currency=usd&days=${days}&interval=hourly`
+    const interval = days <= 2 ? "hourly" : "daily";
+    const url = `${API_CONFIG.COINGECKO.BASE_URL}/coins/${id}/market_chart?vs_currency=usd&days=${days}&interval=${interval}`
     const res = await fetch(url, { headers: REQUEST_HEADERS.COINGECKO })
     if (!res.ok) {
       return NextResponse.json({ error: `CoinGecko error ${res.status}` }, { status: res.status })
