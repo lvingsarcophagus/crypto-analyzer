@@ -9,12 +9,13 @@ import type {
 
 export class RiskCalculator {
   private static readonly WEIGHTS = {
-    market_metrics: 0.25,
+    market_metrics: 0.2,
     wallet_concentration: 0.2,
-    tokenomics: 0.15,
+    tokenomics: 0.1,
     contract_security: 0.15,
-    trading_behavior: 0.15,
+    trading_behavior: 0.1,
     name_symbol_heuristics: 0.1,
+    community_and_dev: 0.15,
   }
 
   static calculateOverallRisk(
@@ -36,6 +37,10 @@ export class RiskCalculator {
     // Tokenomics Risk
     const tokenomicsRisk = this.calculateTokenomicsRisk(tokenData)
     riskFactors.push(tokenomicsRisk)
+
+    // Community and Developer Risk
+    const communityAndDevRisk = this.calculateCommunityAndDeveloperRisk(tokenData)
+    riskFactors.push(communityAndDevRisk)
 
     // Contract Security Risk
     const securityRisk = this.calculateContractSecurityRisk(contractSecurity)
@@ -163,7 +168,7 @@ export class RiskCalculator {
     }
 
     // Fully diluted valuation vs market cap
-    if (tokenData.fully_diluted_valuation && tokenData.market_cap) {
+    if (tokenData.fully_diluted_valuation && tokenData.market_cap > 0) {
       const dilutionRatio = tokenData.fully_diluted_valuation / tokenData.market_cap
       if (dilutionRatio > 5) {
         score += 20
@@ -180,6 +185,63 @@ export class RiskCalculator {
       weight: this.WEIGHTS.tokenomics,
       risk_level: this.determineRiskLevel(score),
       explanation: "Analysis of token supply mechanics and distribution",
+      contributing_factors: factors,
+    }
+  }
+
+  private static calculateCommunityAndDeveloperRisk(tokenData: TokenData): RiskFactor {
+    let score = 40 // Base score
+    const factors: string[] = []
+    const { community_data, developer_data } = tokenData
+
+    // Community strength
+    if (community_data) {
+      const totalCommunity =
+        (community_data.reddit_subscribers || 0) + (community_data.telegram_channel_user_count || 0)
+      if (totalCommunity < 1000) {
+        score += 20
+        factors.push("Very small community size")
+      } else if (totalCommunity < 5000) {
+        score += 10
+        factors.push("Small community size")
+      }
+    } else {
+      score += 10
+      factors.push("Missing community data")
+    }
+
+    // Developer activity
+    if (developer_data) {
+      if (developer_data.commit_count_4_weeks < 5) {
+        score += 25
+        factors.push("Very low developer activity in the last month")
+      } else if (developer_data.commit_count_4_weeks < 15) {
+        score += 15
+        factors.push("Low developer activity in the last month")
+      }
+
+      if (developer_data.pull_request_contributors < 3) {
+        score += 15
+        factors.push("Very few unique contributors to the codebase")
+      }
+
+      const issueRatio = developer_data.closed_issues / developer_data.total_issues
+      if (developer_data.total_issues > 50 && issueRatio < 0.7) {
+        score += 10
+        factors.push("Low ratio of closed to open issues, suggesting poor maintenance")
+      }
+
+    } else {
+      score += 25
+      factors.push("Missing developer activity data")
+    }
+
+    return {
+      category: "Community & Developer Activity",
+      score: Math.min(100, Math.max(0, score)),
+      weight: this.WEIGHTS.community_and_dev,
+      risk_level: this.determineRiskLevel(score),
+      explanation: "Analysis of community engagement and codebase activity",
       contributing_factors: factors,
     }
   }
@@ -333,6 +395,9 @@ export class RiskCalculator {
         }
         if (factor.category === "Trading Behavior") {
           recommendations.push("Be cautious of low liquidity - exits may be difficult")
+        }
+        if (factor.category === "Community & Developer Activity" && factor.risk_level === "CRITICAL") {
+          recommendations.push("Project appears to be abandoned or have very low engagement. High risk.")
         }
       }
     })

@@ -37,7 +37,7 @@ export class CryptoAPIClient {
     try {
       await this.enforceRateLimit('COINGECKO')
       const response = await fetch(
-        `${API_CONFIG.COINGECKO.BASE_URL}/coins/${tokenId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`,
+        `${API_CONFIG.COINGECKO.BASE_URL}/coins/${tokenId}?localization=false&tickers=true&market_data=true&community_data=true&developer_data=true&sparkline=false`,
         { headers: REQUEST_HEADERS.COINGECKO }
       )
       return await response.json()
@@ -66,9 +66,10 @@ export class CryptoAPIClient {
   static async getWalletConcentration(tokenAddress: string, blockchain = 'ethereum'): Promise<any> {
     try {
       // Get data from multiple sources for cross-validation
-      const [moralisData, tokenviewData] = await Promise.allSettled([
+      const [moralisData, tokenviewData, goPlusData] = await Promise.allSettled([
         this.getMoralisTokenHolders(tokenAddress),
-        this.getTokenviewHolders(tokenAddress, blockchain)
+        this.getTokenviewHolders(tokenAddress, blockchain),
+        this.getGoPlusSecurityData(tokenAddress, blockchain),
       ])
 
       const holders: any[] = []
@@ -83,7 +84,11 @@ export class CryptoAPIClient {
         holders.push(...tokenviewData.value)
       }
 
-      return this.analyzeHolderConcentration(holders)
+      const totalSupply = goPlusData.status === 'fulfilled' && goPlusData.value?.total_supply
+        ? parseFloat(goPlusData.value.total_supply)
+        : 0;
+
+      return this.analyzeHolderConcentration(holders, totalSupply)
     } catch (error) {
       console.error("Error fetching wallet concentration:", error)
       // Return mock data as fallback
@@ -123,7 +128,7 @@ export class CryptoAPIClient {
     return data.data || []
   }
 
-  private static analyzeHolderConcentration(holders: any[]): any {
+  private static analyzeHolderConcentration(holders: any[], totalSupply: number): any {
     if (holders.length === 0) {
       return {
         top_10_holders_percentage: 50,
@@ -141,20 +146,31 @@ export class CryptoAPIClient {
       return balanceB - balanceA
     })
 
-    const totalSupply = sortedHolders.reduce((sum, holder) => {
-      return sum + parseFloat(holder.balance || holder.amount || '0')
-    }, 0)
+    // Use the provided total supply if it's valid, otherwise fall back to summing top holders
+    const supplyToUse = totalSupply > 0
+      ? totalSupply
+      : sortedHolders.reduce((sum, holder) => sum + parseFloat(holder.balance || holder.amount || '0'), 0);
+
+    if (supplyToUse === 0) {
+      return { // Avoid division by zero
+        top_10_holders_percentage: 100,
+        top_100_holders_percentage: 100,
+        whale_concentration_risk: "CRITICAL",
+        total_holders: holders.length,
+        data_source: "error_calculating_supply"
+      }
+    }
 
     const top10 = sortedHolders.slice(0, 10)
     const top100 = sortedHolders.slice(0, 100)
 
     const top10Percentage = (top10.reduce((sum, holder) => {
       return sum + parseFloat(holder.balance || holder.amount || '0')
-    }, 0) / totalSupply) * 100
+    }, 0) / supplyToUse) * 100
 
     const top100Percentage = (top100.reduce((sum, holder) => {
       return sum + parseFloat(holder.balance || holder.amount || '0')
-    }, 0) / totalSupply) * 100
+    }, 0) / supplyToUse) * 100
 
     let riskLevel = "LOW"
     if (top10Percentage > 70) riskLevel = "CRITICAL"
@@ -170,73 +186,103 @@ export class CryptoAPIClient {
     }
   }
 
-  // Enhanced contract security analysis using multiple APIs
+  // Enhanced contract security analysis using GoPlus Security API
   static async getContractSecurity(tokenAddress: string, blockchain = 'ethereum'): Promise<any> {
     try {
-      // Get contract information from Moralis and other sources
-      const [moralisData, tokenviewData] = await Promise.allSettled([
-        this.getMoralisTokenMetadata(tokenAddress),
-        this.getTokenviewTokenInfo(tokenAddress, blockchain)
-      ])
+      const securityData = await this.getGoPlusSecurityData(tokenAddress, blockchain)
 
-      let securityScore = 50 // Base score
-      let securityFactors: string[] = []
-
-      // Analyze Moralis contract data
-      if (moralisData.status === 'fulfilled' && moralisData.value) {
-        const contractData = moralisData.value
-        
-        if (contractData.verified_contract) {
-          securityScore += 20
-          securityFactors.push("Contract is verified")
-        } else {
-          securityScore -= 30
-          securityFactors.push("Contract is not verified")
-        }
-
-        if (contractData.possible_spam) {
-          securityScore -= 40
-          securityFactors.push("Flagged as possible spam")
-        }
+      if (!securityData) {
+        throw new Error("Failed to fetch data from GoPlus Security")
       }
 
-      // Analyze Tokenview data
-      if (tokenviewData.status === 'fulfilled' && tokenviewData.value) {
-        const tokenInfo = tokenviewData.value
-        
-        if (tokenInfo.holders && tokenInfo.holders > 1000) {
-          securityScore += 10
-          securityFactors.push("High number of holders")
-        }
+      const isVerified = securityData.is_open_source === "1"
+      const hasProxy = securityData.is_proxy === "1"
+      const hasMintFunction = securityData.is_mintable === "1"
+      const isPausable = securityData.transfer_pausable === "1"
+      const isHoneypot = securityData.is_honeypot === "1"
+      const ownerAddress = securityData.owner_address
+      const isOwnershipRenounced = ownerAddress === "" || ownerAddress === "0x0000000000000000000000000000000000000000"
 
-        if (tokenInfo.transfers && tokenInfo.transfers > 10000) {
-          securityScore += 5
-          securityFactors.push("High transfer activity")
-        }
+      let securityScore = 100
+      const securityFactors: string[] = []
+
+      if (!isVerified) {
+        securityScore -= 50
+        securityFactors.push("Contract source code is not verified.")
+      }
+      if (hasProxy) {
+        securityScore -= 10
+        securityFactors.push("Contract is a proxy, which can be upgraded.")
+      }
+      if (hasMintFunction) {
+        securityScore -= 20
+        securityFactors.push("Contract has a mint function, allowing new tokens to be created.")
+      }
+      if (isPausable) {
+        securityScore -= 15
+        securityFactors.push("Trading can be paused by the contract owner.")
+      }
+      if (!isOwnershipRenounced) {
+        securityScore -= 15
+        securityFactors.push("Contract ownership has not been renounced.")
+      }
+      if (isHoneypot) {
+        securityScore = 0 // Honeypots are critical risk
+        securityFactors.push("Honeypot detected. Users may not be able to sell this token.")
       }
 
       return {
-        is_verified: moralisData.status === 'fulfilled' && moralisData.value?.verified_contract,
-        has_proxy: Math.random() > 0.7, // Would need specific proxy detection
-        has_mint_function: Math.random() > 0.6, // Would need contract ABI analysis
-        has_pause_function: Math.random() > 0.8, // Would need contract ABI analysis
-        ownership_renounced: Math.random() > 0.4, // Would need ownership analysis
-        security_score: Math.max(0, Math.min(100, securityScore)),
+        is_verified: isVerified,
+        has_proxy: hasProxy,
+        has_mint_function: hasMintFunction,
+        has_pause_function: isPausable,
+        ownership_renounced: isOwnershipRenounced,
+        security_score: Math.max(0, securityScore),
         security_factors: securityFactors,
-        data_source: "multi_source_analysis"
+        data_source: "GoPlus Security",
       }
     } catch (error) {
       console.error("Error fetching contract security:", error)
+      // Return a default security object with a low score on error
       return {
-        is_verified: Math.random() > 0.3,
-        has_proxy: Math.random() > 0.7,
-        has_mint_function: Math.random() > 0.6,
-        has_pause_function: Math.random() > 0.8,
-        ownership_renounced: Math.random() > 0.4,
-        security_score: Math.random() * 100,
-        data_source: "fallback"
+        is_verified: false,
+        has_proxy: false,
+        has_mint_function: true,
+        has_pause_function: true,
+        ownership_renounced: false,
+        security_score: 20,
+        security_factors: ["Failed to retrieve contract security data"],
+        data_source: "fallback",
       }
     }
+  }
+
+  private static async getGoPlusSecurityData(tokenAddress: string, blockchain: string): Promise<any> {
+    await this.enforceRateLimit('GOPLUS')
+    // A mapping for GoPlus chain IDs. This can be expanded.
+    const goPlusChainIdMapping: { [key: string]: string } = {
+      ethereum: "1",
+      bsc: "56",
+      polygon: "137",
+      avalanche: "43114",
+    }
+    const chainId = goPlusChainIdMapping[blockchain] || "1" // Default to Ethereum
+
+    const response = await fetch(
+      `https://api.gopluslabs.io/api/v1/token_security/${chainId}?contract_addresses=${tokenAddress}`
+    )
+
+    if (!response.ok) {
+      throw new Error(`GoPlus Security API error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    if (data.code !== 1 || !data.result || !data.result[tokenAddress.toLowerCase()]) {
+      console.error("GoPlus API returned an error or no data:", data.message)
+      return null
+    }
+
+    return data.result[tokenAddress.toLowerCase()]
   }
 
   private static async getMoralisTokenMetadata(tokenAddress: string): Promise<any> {
