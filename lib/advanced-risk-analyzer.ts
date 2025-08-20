@@ -131,10 +131,15 @@ export class AdvancedRiskAnalyzer {
       market_cap_rank: rawData.market_cap_rank || 999999,
       price_change_percentage_24h: rawData.market_data?.price_change_percentage_24h || 0,
       market_cap: rawData.market_data?.market_cap?.usd || 0,
+      fully_diluted_valuation: rawData.market_data?.fully_diluted_valuation?.usd || 0,
       total_volume: rawData.market_data?.total_volume?.usd || 0,
       circulating_supply: rawData.market_data?.circulating_supply || 0,
       total_supply: rawData.market_data?.total_supply || 0,
-      max_supply: rawData.market_data?.max_supply || null
+      max_supply: rawData.market_data?.max_supply || null,
+      ath_change_percentage: rawData.market_data?.ath_change_percentage?.usd || 0,
+      // Pass through community and developer data
+      community_data: rawData.community_data,
+      developer_data: rawData.developer_data,
     }
   }
 

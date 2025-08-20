@@ -24,6 +24,28 @@ export interface TokenData {
   atl_change_percentage: number
   atl_date: string
   last_updated: string
+  community_data?: {
+    facebook_likes: number | null
+    reddit_average_posts_48h: number
+    reddit_average_comments_48h: number
+    reddit_subscribers: number
+    reddit_accounts_active_48h: number
+    telegram_channel_user_count: number | null
+  }
+  developer_data?: {
+    forks: number
+    stars: number
+    subscribers: number
+    total_issues: number
+    closed_issues: number
+    pull_requests_merged: number
+    pull_request_contributors: number
+    code_additions_deletions_4_weeks: {
+      additions: number
+      deletions: number
+    }
+    commit_count_4_weeks: number
+  }
 }
 
 export interface WalletConcentration {
