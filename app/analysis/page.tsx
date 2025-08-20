@@ -1,8 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { AdvancedAnalysisForm } from "@/components/analysis/advanced-analysis-form"
-import { LiveRiskChart } from "@/components/monitoring/live-risk-chart"
+import { HistoricalChart } from "@/components/monitoring/historical-chart"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Shield, Database, TrendingUp, Activity, BarChart3, AlertTriangle } from "lucide-react"
@@ -23,14 +22,10 @@ export default function AnalysisPage() {
         </div>
         
         <Tabs defaultValue="live-analysis" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8 bg-card/50 backdrop-blur-md border border-border">
+          <TabsList className="grid w-full grid-cols-2 mb-8 bg-card/50 backdrop-blur-md border border-border">
             <TabsTrigger value="live-analysis" className="flex items-center gap-2">
-              <Activity className="h-4 w-4" />
-              Live Analysis
-            </TabsTrigger>
-            <TabsTrigger value="advanced-scan" className="flex items-center gap-2">
-              <Shield className="h-4 w-4" />
-              Advanced Scan
+              <BarChart3 className="h-4 w-4" />
+              Historical Analysis
             </TabsTrigger>
             <TabsTrigger value="risk-metrics" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
@@ -44,16 +39,14 @@ export default function AnalysisPage() {
               <Card className="backdrop-blur-md bg-card/80 border-border shadow-xl lg:col-span-2">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Activity className="h-5 w-5 text-primary" />
-                    Real-Time Risk & Price Monitoring
+                    <BarChart3 className="h-5 w-5 text-primary" />
+                    Historical Price & Data Analysis
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <LiveRiskChart
+                  <HistoricalChart
                     defaultToken={selectedToken}
                     height={400}
-                    updateInterval={10000}
-                    maxPoints={100}
                   />
                 </CardContent>
               </Card>
@@ -123,50 +116,6 @@ export default function AnalysisPage() {
                       <span className="text-sm font-bold">54.2%</span>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="advanced-scan" className="space-y-6">
-            {/* Advanced Analysis Form */}
-            <AdvancedAnalysisForm />
-
-            {/* Analysis Features Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-              <Card className="backdrop-blur-md bg-card/60 border-border">
-                <CardContent className="p-6 text-center">
-                  <div className="w-12 h-12 bg-primary/20 rounded-lg flex items-center justify-center mx-auto mb-4">
-                    <Shield className="h-6 w-6 text-primary" />
-                  </div>
-                  <h3 className="font-bold mb-2">Multi-Factor Risk Assessment</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Analyzes market conditions, liquidity, security, and holder distribution patterns using real-time data.
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="backdrop-blur-md bg-card/60 border-border">
-                <CardContent className="p-6 text-center">
-                  <div className="w-12 h-12 bg-secondary/20 rounded-lg flex items-center justify-center mx-auto mb-4">
-                    <Database className="h-6 w-6 text-secondary" />
-                  </div>
-                  <h3 className="font-bold mb-2">Cross-Source Validation</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Validates data across CoinGecko, blockchain explorers, and security APIs for maximum accuracy.
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="backdrop-blur-md bg-card/60 border-border">
-                <CardContent className="p-6 text-center">
-                  <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center mx-auto mb-4">
-                    <TrendingUp className="h-6 w-6 text-green-400" />
-                  </div>
-                  <h3 className="font-bold mb-2">Historical Trends</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Analyzes historical patterns, price movements, and volume trends for comprehensive risk assessment.
-                  </p>
                 </CardContent>
               </Card>
             </div>

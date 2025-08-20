@@ -21,10 +21,25 @@ export class CryptoAPIClient {
   static async searchTokens(query: string): Promise<any[]> {
     try {
       await this.enforceRateLimit('COINGECKO')
+      
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000) // 8 seconds timeout
+      
       const response = await fetch(
         `${API_CONFIG.COINGECKO.BASE_URL}/search?query=${encodeURIComponent(query)}`,
-        { headers: REQUEST_HEADERS.COINGECKO }
+        { 
+          headers: REQUEST_HEADERS.COINGECKO,
+          signal: controller.signal
+        }
       )
+      
+      clearTimeout(timeoutId)
+      
+      if (!response.ok) {
+        console.warn(`Search API returned ${response.status}`)
+        return []
+      }
+      
       const data = await response.json()
       return data.coins || []
     } catch (error) {
@@ -34,16 +49,54 @@ export class CryptoAPIClient {
   }
 
   static async getTokenData(tokenId: string): Promise<any> {
-    try {
-      await this.enforceRateLimit('COINGECKO')
-      const response = await fetch(
-        `${API_CONFIG.COINGECKO.BASE_URL}/coins/${tokenId}?localization=false&tickers=true&market_data=true&community_data=true&developer_data=true&sparkline=false`,
-        { headers: REQUEST_HEADERS.COINGECKO }
-      )
-      return await response.json()
-    } catch (error) {
-      console.error("Error fetching token data:", error)
-      throw error
+    const maxRetries = 3
+    const timeoutMs = 10000 // 10 seconds timeout
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await this.enforceRateLimit('COINGECKO')
+        
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+        
+        const response = await fetch(
+          `${API_CONFIG.COINGECKO.BASE_URL}/coins/${tokenId}?localization=false&tickers=true&market_data=true&community_data=true&developer_data=true&sparkline=false`,
+          { 
+            headers: REQUEST_HEADERS.COINGECKO,
+            signal: controller.signal
+          }
+        )
+        
+        clearTimeout(timeoutId)
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+        
+        return await response.json()
+      } catch (error) {
+        console.error(`Error fetching token data (attempt ${attempt}/${maxRetries}):`, error)
+        
+        if (attempt === maxRetries) {
+          // Return fallback data structure instead of throwing
+          return {
+            id: tokenId,
+            symbol: tokenId.toUpperCase(),
+            name: tokenId.charAt(0).toUpperCase() + tokenId.slice(1),
+            market_data: {
+              current_price: { usd: 0 },
+              market_cap: { usd: 0 },
+              total_volume: { usd: 0 },
+              price_change_percentage_24h: 0
+            },
+            _fallback: true,
+            _error: error instanceof Error ? error.message : String(error)
+          }
+        }
+        
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000))
+      }
     }
   }
 

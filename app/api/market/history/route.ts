@@ -34,15 +34,32 @@ export async function POST(request: Request) {
 
     const id = await resolveId(tokenId)
     const url = `${API_CONFIG.COINGECKO.BASE_URL}/coins/${id}/market_chart?vs_currency=usd&days=${days}&interval=hourly`
-    const res = await fetch(url, { headers: REQUEST_HEADERS.COINGECKO })
+    
+    const res = await fetch(url, { 
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'CryptoAnalyzer/1.0'
+      }
+    })
+    
     if (!res.ok) {
-      return NextResponse.json({ error: `CoinGecko error ${res.status}` }, { status: res.status })
+      return NextResponse.json({ 
+        error: `CoinGecko API error: ${res.status} ${res.statusText}` 
+      }, { status: res.status })
     }
+    
     const json = await res.json()
-    const prices = (json.prices || []).map((p: [number, number]) => ({ time: new Date(p[0]).toISOString(), price: p[1] }))
-    const volumes = (json.total_volumes || []).map((v: [number, number]) => ({ time: new Date(v[0]).toISOString(), volume: v[1] }))
-    return NextResponse.json({ token_id: id, days, prices, volumes })
+    
+    return NextResponse.json({
+      token_id: id,
+      days,
+      prices: json.prices || [],
+      total_volumes: json.total_volumes || [],
+      market_caps: json.market_caps || []
+    })
+    
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "failed" }, { status: 500 })
+    console.error('Market history API error:', e)
+    return NextResponse.json({ error: e?.message || "Failed to fetch market data" }, { status: 500 })
   }
 }

@@ -31,13 +31,57 @@ export async function POST(request: Request) {
   try {
     const { tokenId } = await request.json()
     if (!tokenId) return NextResponse.json({ error: "tokenId is required" }, { status: 400 })
+    
     const id = await resolveId(tokenId)
     const url = `${API_CONFIG.COINGECKO.BASE_URL}/simple/price?ids=${id}&vs_currencies=usd`
-    const res = await fetch(url, { headers: REQUEST_HEADERS.COINGECKO })
-    if (!res.ok) return NextResponse.json({ error: `CoinGecko error ${res.status}` }, { status: res.status })
-    const json = await res.json()
-    return NextResponse.json({ token_id: id, price: json?.[id]?.usd ?? null })
+    
+    // Add timeout and retry logic
+    const maxRetries = 2
+    const timeoutMs = 8000
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+        
+        const res = await fetch(url, { 
+          headers: REQUEST_HEADERS.COINGECKO,
+          signal: controller.signal
+        })
+        
+        clearTimeout(timeoutId)
+        
+        if (!res.ok) {
+          if (attempt === maxRetries) {
+            return NextResponse.json({ error: `CoinGecko error ${res.status}` }, { status: res.status })
+          }
+          continue
+        }
+        
+        const json = await res.json()
+        return NextResponse.json({ token_id: id, price: json?.[id]?.usd ?? null })
+        
+      } catch (fetchError) {
+        if (attempt === maxRetries) {
+          throw fetchError
+        }
+        // Wait before retry
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+      }
+    }
+    
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "failed" }, { status: 500 })
+    const errorMessage = e?.message || "failed"
+    console.error("Market price API error:", errorMessage)
+    
+    // Provide more specific error messages
+    if (errorMessage.includes('timeout') || errorMessage.includes('TIMEOUT')) {
+      return NextResponse.json({ 
+        error: "Request timeout - market data temporarily unavailable",
+        fallback_price: null
+      }, { status: 503 })
+    }
+    
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }

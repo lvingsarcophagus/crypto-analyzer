@@ -82,17 +82,23 @@ export async function POST(request: NextRequest) {
 
     // Fetch basic token info to include in the response for the frontend
     const tokenInfo = await CryptoAPIClient.getTokenData(resolvedId);
+    
+    // Handle fallback data case
+    if (tokenInfo._fallback) {
+      console.log(`⚠️ Using fallback data for ${resolvedId} due to API issues`);
+    }
 
     const response = {
       token: {
-        id: tokenInfo.id,
-        symbol: tokenInfo.symbol,
-        name: tokenInfo.name,
-        image: tokenInfo.image?.large,
-        current_price: tokenInfo.market_data?.current_price?.usd,
-        market_cap: tokenInfo.market_data?.market_cap?.usd,
-        market_cap_rank: tokenInfo.market_cap_rank,
+        id: tokenInfo.id || resolvedId,
+        symbol: tokenInfo.symbol || resolvedId.toUpperCase(),
+        name: tokenInfo.name || resolvedId.charAt(0).toUpperCase() + resolvedId.slice(1),
+        image: tokenInfo.image?.large || null,
+        current_price: tokenInfo.market_data?.current_price?.usd || 0,
+        market_cap: tokenInfo.market_data?.market_cap?.usd || 0,
+        market_cap_rank: tokenInfo.market_cap_rank || null,
         contract_address: tokenAddress,
+        _fallback_data: tokenInfo._fallback || false
       },
       risk_analysis: riskAnalysis,
       analysis_type: "comprehensive",
@@ -125,9 +131,12 @@ export async function POST(request: NextRequest) {
       } else if (error.message.includes('429') || error.message.includes('rate limit')) {
         errorMessage = "Rate limit exceeded";
         suggestion = "Our system is under heavy load. Please wait a moment and try again.";
-      } else if (error.message.includes('network') || error.message.includes('fetch')) {
-        errorMessage = "Network error";
-        suggestion = "Could not connect to external data sources. Please check your internet connection.";
+      } else if (error.message.includes('timeout') || error.message.includes('TIMEOUT') || error.message.includes('UND_ERR_CONNECT_TIMEOUT')) {
+        errorMessage = "Request timeout";
+        suggestion = "The analysis is taking longer than expected. Please try again with a shorter analysis or check your internet connection.";
+      } else if (error.message.includes('network') || error.message.includes('fetch') || error.message.includes('ENOTFOUND') || error.message.includes('ECONNRESET')) {
+        errorMessage = "Network connectivity issue";
+        suggestion = "Unable to connect to data sources. Please check your internet connection and try again.";
       }
     }
 
