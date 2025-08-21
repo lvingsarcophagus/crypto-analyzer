@@ -33,15 +33,14 @@ export async function POST(request: Request) {
     if (!tokenId) return NextResponse.json({ error: "tokenId is required" }, { status: 400 })
 
     const id = await resolveId(tokenId)
-    const url = `${API_CONFIG.COINGECKO.BASE_URL}/coins/${id}/market_chart?vs_currency=usd&days=${days}&interval=hourly`
-    
+    const interval = days <= 2 ? "hourly" : "daily";
+    const url = `${API_CONFIG.COINGECKO.BASE_URL}/coins/${id}/market_chart?vs_currency=usd&days=${days}&interval=${interval}`
     const res = await fetch(url, { 
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': 'CryptoAnalyzer/1.0'
       }
     })
-    
     if (!res.ok) {
       return NextResponse.json({ 
         error: `CoinGecko API error: ${res.status} ${res.statusText}` 
@@ -49,7 +48,6 @@ export async function POST(request: Request) {
     }
     
     const json = await res.json()
-    
     return NextResponse.json({
       token_id: id,
       days,
@@ -57,7 +55,6 @@ export async function POST(request: Request) {
       total_volumes: json.total_volumes || [],
       market_caps: json.market_caps || []
     })
-    
   } catch (e: any) {
     console.error('Market history API error:', e)
     return NextResponse.json({ error: e?.message || "Failed to fetch market data" }, { status: 500 })

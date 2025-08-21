@@ -1,13 +1,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from "recharts"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Calendar, TrendingUp, TrendingDown, BarChart3, Loader2 } from "lucide-react"
+import { useDebounce } from "@/hooks/use-debounce"
 
 interface HistoricalDataPoint {
   date: string
@@ -33,7 +34,55 @@ export function HistoricalChart({
   const [timeRange, setTimeRange] = useState<string>("30")
   const [chartType, setChartType] = useState<"line" | "area">("area")
 
+  const debouncedToken = useDebounce(token, 500)
+  const debouncedTimeRange = useDebounce(timeRange, 500)
+
+  useEffect(() => {
+    const fetchHistoricalData = async (tokenId = debouncedToken, days = debouncedTimeRange) => {
+      if (!tokenId) return;
+      try {
+        setError(null)
+        setLoading(true)
+        
+        const response = await fetch("/api/market/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tokenId, days: parseInt(days) })
+        })
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch data: ${response.status}`)
+        }
+        
+        const result = await response.json()
+        
+        if (result.error) {
+          throw new Error(result.error)
+        }
+        
+        // Transform the data for the chart
+        const transformedData = result.prices?.map((item: any, index: number) => ({
+          date: new Date(item[0]).toLocaleDateString(),
+          price: item[1],
+          volume: result.total_volumes?.[index]?.[1] || 0,
+          market_cap: result.market_caps?.[index]?.[1] || 0,
+          timestamp: item[0]
+        })) || []
+        
+        setData(transformedData)
+      } catch (error) {
+        console.error('Error fetching historical data:', error)
+        setError(error instanceof Error ? error.message : 'Failed to load data')
+        setData([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchHistoricalData()
+  }, [debouncedToken, debouncedTimeRange])
+
   const fetchHistoricalData = async (tokenId = token, days = timeRange) => {
+    if (!tokenId) return;
     try {
       setError(null)
       setLoading(true)
@@ -73,14 +122,8 @@ export function HistoricalChart({
     }
   }
 
-  useEffect(() => {
-    fetchHistoricalData()
-  }, [token, timeRange])
-
   const handleSearch = () => {
-    if (token.trim()) {
-      fetchHistoricalData(token.trim(), timeRange)
-    }
+    // The useEffect will handle the fetch due to debouncing
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
